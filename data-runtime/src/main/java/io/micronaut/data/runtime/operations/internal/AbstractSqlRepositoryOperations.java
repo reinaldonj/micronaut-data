@@ -213,7 +213,106 @@ public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends E
     public final <T> RuntimePersistentEntity<T> getEntity(@NonNull Class<T> type) {
         return runtimeEntityRegistry.getEntity(type);
     }
+	
+	private String getPageableQuery(String query, SqlQueryBuilder queryBuilder, @NonNull PreparedQuery preparedQuery, Class rootEntity){
+		
+		String queryBuilderPagination = queryBuilder.buildPagination(preparedQuery.getPageable()).getQuery();
+		String aliasNamePagination = getEntity(rootEntity).getPersistedName() +"_2";
+		String aliasNameTableRoot = getEntity(rootEntity).getPersistedName() +"_";
+		String fieldId = getEntity(rootEntity).getIdentity().getName();
+		
+		String innerPagination = " INNER JOIN (SELECT " + aliasNamePagination + "." + fieldId + " as qryPag_id FROM "; 
+		
+		String whereClausule = "";
+				
+		if (query.toUpperCase().indexOf("FROM") > -1){
+			
+			int posPosFrom = query.toUpperCase().indexOf("FROM") + "FROM".length();
+			String tablesFrom = query.substring(posPosFrom);
+			
+			System.out.println("************************FROM -> ");
+			System.out.println(tablesFrom);
+			
+			if (tablesFrom.toUpperCase().indexOf("WHERE") > -1){
+				
+				int posWhere = query.toUpperCase().indexOf("WHERE");
+				tablesFrom = query.substring(posPosFrom, posWhere);
+				System.out.println("************************FROM -> ");
+				System.out.println(tablesFrom);
+				
+				whereClausule =  query.substring(posWhere);
+				
+				if (query.toUpperCase().indexOf("ORDER") > -1){
+					int posOrderBy_ = query.toUpperCase().indexOf("ORDER");
+					whereClausule = query.substring(posWhere, posOrderBy_);
+				}
+				
+			}else if (tablesFrom.toUpperCase().indexOf("ORDER") > -1){
+				int posOrderBy = query.toUpperCase().indexOf("ORDER");
+				tablesFrom = query.substring(posPosFrom, posOrderBy);
+				System.out.println("************************FROM -> ");
+				System.out.println(tablesFrom);
+			}
+			
+			tablesFrom 	  = tablesFrom
+				.replace(
+					("_ "), 
+					("_2 ")
+				)
+				.replace(
+					("_."), 
+					("_2.")
+				);
+			whereClausule = whereClausule.replace(("_."), ("_2."));
 
+			innerPagination += tablesFrom + " " + whereClausule + " " + queryBuilderPagination + ") as qryPag ON qryPag.qryPag_id = " + aliasNameTableRoot + "." + fieldId + " ";			
+		}		
+	
+		if (query.toUpperCase().lastIndexOf("WHERE") > -1){
+			
+			int posWhere = query.toUpperCase().lastIndexOf("WHERE");
+			
+			String queryNoWhere = query.substring(0, posWhere);
+			
+			query = queryNoWhere += innerPagination + query.substring(posWhere);
+			
+		}else{
+		
+			if (query.toUpperCase().indexOf("ORDER") > -1){
+				
+				int posOrder = query.toUpperCase().indexOf("ORDER");
+			
+				String queryNoOrder = query.substring(0, posOrder);
+				
+				query = queryNoOrder += innerPagination + query.substring(posOrder);
+				
+			}else{
+				query += innerPagination;
+			}
+		}
+		
+		if (query.toUpperCase().lastIndexOf("WHERE") > -1){
+			
+			int posWhere = query.toUpperCase().lastIndexOf("WHERE");
+			int posPosWhere = query.toUpperCase().lastIndexOf("WHERE") + "WHERE".length();
+			
+			if (query.toUpperCase().indexOf("ORDER") > -1){
+				
+				int posOrder = query.toUpperCase().indexOf("ORDER");
+				
+				query = query.substring(0,posWhere) + " " + query.substring(posOrder);
+				
+			}else{
+				
+				query = query.substring(0,posWhere);
+				
+			}
+		}
+		
+		return query;
+		
+	}
+	
     /**
      * Prepare a statement for execution.
      *
@@ -286,7 +385,8 @@ public abstract class AbstractSqlRepositoryOperations<Cnt, RS, PS, Exc extends E
                 if (isSingleResult && pageable.getOffset() > 0) {
                     pageable = Pageable.from(pageable.getNumber(), 1);
                 }
-                query += queryBuilder.buildPagination(pageable).getQuery();
+                //query += queryBuilder.buildPagination(pageable).getQuery();
+				query = getPageableQuery(query, queryBuilder, preparedQuery, rootEntity); 
             }
         }
 
